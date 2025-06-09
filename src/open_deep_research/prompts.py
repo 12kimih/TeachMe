@@ -1,4 +1,4 @@
-report_planner_query_writer_instructions="""You are performing research for a report. 
+report_planner_query_writer_instructions = """You are performing research for a report. 
 
 <Report topic>
 {topic}
@@ -26,7 +26,7 @@ Call the Queries tool
 Today is {today}
 """
 
-report_planner_instructions="""I want a plan for a report that is concise and focused.
+report_planner_instructions = """I want a plan for a report that is concise and focused.
 
 <Report topic>
 The topic of the report is:
@@ -80,7 +80,7 @@ Call the Sections tool
 </Format>
 """
 
-query_writer_instructions="""You are an expert technical writer crafting targeted web search queries that will gather comprehensive information for writing a technical report section.
+query_writer_instructions = """You are an expert technical writer crafting targeted web search queries that will gather comprehensive information for writing a technical report section.
 
 <Report topic>
 {topic}
@@ -143,7 +143,7 @@ section_writer_instructions = """Write one section of a research report.
 </Final Check>
 """
 
-section_writer_inputs=""" 
+section_writer_inputs = """ 
 <Report topic>
 {topic}
 </Report topic>
@@ -197,7 +197,7 @@ follow_up_queries: List[SearchQuery] = Field(
 </format>
 """
 
-final_section_writer_instructions="""You are an expert technical writer crafting a section that synthesizes information from the rest of the report.
+final_section_writer_instructions = """You are an expert technical writer crafting a section that synthesizes information from the rest of the report.
 
 <Report topic>
 {topic}

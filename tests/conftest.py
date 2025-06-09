@@ -4,6 +4,7 @@ Pytest configuration for open_deep_research tests.
 
 import pytest
 
+
 def pytest_addoption(parser):
     """Add command-line options to pytest."""
     parser.addoption("--research-agent", action="store", help="Agent type: multi_agent or graph")
