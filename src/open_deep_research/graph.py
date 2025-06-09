@@ -1,27 +1,27 @@
+import functools
 import operator
 import os
-import functools
 from typing import Annotated, List, Literal, Optional, TypedDict
 
 from langchain.chat_models import init_chat_model
-from langchain_core.pydantic_v1 import BaseModel, Field
+from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_pymupdf4llm import PyMuPDF4LLMLoader
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import END, StateGraph
+from langgraph.graph import END, MessagesState, StateGraph
+from pydantic import BaseModel, Field
 
 from open_deep_research.configuration import Configuration
 from open_deep_research.prompts import (
     ACTIONABLE_CHECKLIST_INSTRUCTIONS,
+    CONFERENCE_FORMATS,
     DIFFERENTIATION_ANALYSIS_INSTRUCTIONS,
     EXECUTIVE_SUMMARY_INSTRUCTIONS,
     FEEDBACK_CRITERIA,
     FEEDBACK_INSTRUCTIONS_TEMPLATE,
-    CONFERENCE_FORMATS,
     HOW_TO_WRITE_GOOD_REVIEWS,
-    REVIEW_EXAMPLES,
     PAPER_SUMMARY_INSTRUCTIONS,
     RELATED_WORK_RELEVANCE_CHECK_INSTRUCTIONS,
+    REVIEW_EXAMPLES,
     REVIEW_SIMULATION_INSTRUCTIONS,
     SEARCH_KEYWORD_GENERATION_INSTRUCTIONS,
 )
@@ -76,10 +76,15 @@ class SearchAgentState(TypedDict):
     search_iteration: int
 
 
-class PaperReviewState(TypedDict):
-    """The global state for the TeachMe agent workflow."""
+class PaperReviewState(MessagesState):
+    """
+    The global state for the TeachMe agent workflow, inheriting from MessagesState
+    to manage conversation history.
+    """
 
-    # Inputs
+    # 'messages' is inherited from MessagesState
+
+    # Inputs (will be populated by the first node)
     input_path_or_text: str
     review_conference_format: Literal["neurips", "iclr", "icml", "acl"]
 
@@ -101,23 +106,33 @@ class PaperReviewState(TypedDict):
     simulated_review: str
     executive_summary: str
     actionable_checklist: str
-    final_report: str  # This will be the final assembled output
+    final_report: str
 
 
 # --- Agent Nodes (Update init_chat_model calls) ---
 # Stage 1 Node
 async def summary_agent_node(state: PaperReviewState, config: RunnableConfig):
-    """Parses input paper and creates a deep summary."""
+    """Parses input paper from the user's message and creates a deep summary."""
     print("--- STAGE 1: SUMMARIZING PAPER ---")
     cfg = Configuration.from_runnable_config(config)
-    input_val = state["input_path_or_text"]
 
+    # Extract the user's input from the last message in the state
+    # This makes the graph invokable with a simple chat history
+    if not state["messages"] or state["messages"][-1].type != "user":
+        raise ValueError("The conversation history must end with a user message containing the input.")
+
+    input_val = state["messages"][-1].content
+    print(f"Received input: {input_val[:100]}...")
+
+    # 1. Parse Document
     if os.path.exists(input_val) and input_val.lower().endswith(".pdf"):
         loader = PyMuPDF4LLMLoader(input_val)
-        text = "\n\n".join([doc.page_content for doc in loader.load()])
+        docs = loader.load()
+        text = "\n\n".join([doc.page_content for doc in docs])
     else:
-        text = input_val
+        text = input_val  # Assume raw text
 
+    # 2. Summarize using LLM
     llm = init_chat_model(
         model=cfg.summary_agent_model,
         model_kwargs=cfg.summary_agent_model_kwargs,
@@ -125,7 +140,8 @@ async def summary_agent_node(state: PaperReviewState, config: RunnableConfig):
     summarizer_chain = llm.with_structured_output(DeepSummary)
     summary = await summarizer_chain.ainvoke(PAPER_SUMMARY_INSTRUCTIONS.format(paper_text=text))
 
-    return {"original_paper_text": text, "original_paper_summary": summary}
+    # Populate the state for subsequent nodes
+    return {"input_path_or_text": input_val, "review_conference_format": cfg.review_conference_format, "original_paper_text": text, "original_paper_summary": summary}  # Also populate this from config
 
 
 # Stage 3 Nodes (Parallel Execution)
@@ -322,26 +338,33 @@ def compile_final_report_node(state: PaperReviewState):
     # Section 1: Deep Summary (Formatted nicely)
     summary_section = f"""
 ### 1.1 Purpose and Objective
-{summary.purpose_objective}
+
+{summary.purpose_objective.strip()}
 
 ### 1.2 Methods
-{summary.methods}
+
+{summary.methods.strip()}
 
 ### 1.3 Experimental Setup
-{summary.experimental_setup}
+
+{summary.experimental_setup.strip()}
 
 ### 1.4 Key Findings and Results
-{summary.key_findings_results}
+
+{summary.key_findings_results.strip()}
 
 ### 1.5 Conclusions and Implications
-{summary.conclusions_implications}
+
+{summary.conclusions_implications.strip()}
 
 ### 1.6 Novelty and Contribution
-{summary.novelty_contribution}
+
+{summary.novelty_contribution.strip()}
 
 ### 1.7 Limitations
-{summary.limitations}
-"""
+
+{summary.limitations.strip()}
+""".strip()
 
     # Section 2: Related Work (Already formatted markdown from the agent)
     related_work_section = state["differentiation_analysis"]
@@ -349,20 +372,25 @@ def compile_final_report_node(state: PaperReviewState):
     # Section 3: Detailed Feedback (Formatted with subheadings)
     feedback_section = f"""
 ### 3.1 Clarity and Organization
-{state['clarity_feedback']}
+
+{state['clarity_feedback'].strip()}
 
 ### 3.2 Motivation, Novelty & Significance
-{state['novelty_feedback']}
+
+{state['novelty_feedback'].strip()}
 
 ### 3.3 Methodology & Evidence
-{state['methodology_feedback']}
+
+{state['methodology_feedback'].strip()}
 
 ### 3.4 Technical Accuracy & Language Quality
-{state['technical_feedback']}
+
+{state['technical_feedback'].strip()}
 
 ### 3.5 Limitations & Future Work
-{state['limitations_feedback']}
-"""
+
+{state['limitations_feedback'].strip()}
+""".strip()
 
     # Section 4: Simulated Review (Already formatted markdown)
     review_section = state["simulated_review"]
@@ -370,11 +398,13 @@ def compile_final_report_node(state: PaperReviewState):
     # Section 5: Executive Report (Formatted with subheadings)
     executive_section = f"""
 ### 5.1 Executive Summary
-{state['executive_summary']}
+
+{state['executive_summary'].strip()}
 
 ### 5.2 Actionable Enhancement Checklist
-{state['actionable_checklist']}
-"""
+
+{state['actionable_checklist'].strip()}
+""".strip()
 
     # Assemble the final report using f-string
     final_report_str = f"""
@@ -383,33 +413,40 @@ def compile_final_report_node(state: PaperReviewState):
 ---
 
 ## 1. Deep Summary of Manuscript
+
 {summary_section.strip()}
 
 ---
 
 ## 2. Related Work & Differentiation Analysis
+
 {related_work_section.strip()}
 
 ---
 
 ## 3. Detailed Feedback by Criteria
+
 {feedback_section.strip()}
 
 ---
 
 ## 4. Simulated Peer Review
+
 {review_section.strip()}
 
 ---
 
 ## 5. Executive Report & Action Plan
+
 {executive_section.strip()}
-"""
-    return {"final_report": final_report_str.strip()}
+""".strip()
+
+    # Create the final assistant message and update the state
+    return {"final_report": final_report_str, "messages": [AIMessage(content=final_report_str)]}
 
 
 # --- Orchestrator Graph (NEW WORKFLOW) ---
-workflow = StateGraph(PaperReviewState)
+workflow = StateGraph(PaperReviewState, input=MessagesState, output=MessagesState)
 
 # Stage 1
 workflow.add_node("summary_agent", summary_agent_node)
@@ -441,7 +478,7 @@ workflow.add_node("compile_report_agent", compile_final_report_node)
 workflow.set_entry_point("summary_agent")
 
 # After summary, start search and all feedback tasks in parallel
-workflow.add_edge("summary_agent", "search_agent")
+# workflow.add_edge("summary_agent", "search_agent")
 workflow.add_edge("summary_agent", "clarity_feedback_agent")
 workflow.add_edge("summary_agent", "novelty_feedback_agent")
 workflow.add_edge("summary_agent", "methodology_feedback_agent")
@@ -449,7 +486,7 @@ workflow.add_edge("summary_agent", "technical_feedback_agent")
 workflow.add_edge("summary_agent", "limitations_feedback_agent")
 
 # Join the parallel branches: after search AND all feedback tasks are done, simulate the review
-workflow.add_edge("search_agent", "review_agent")
+# workflow.add_edge("search_agent", "review_agent")
 workflow.add_edge("clarity_feedback_agent", "review_agent")
 workflow.add_edge("novelty_feedback_agent", "review_agent")
 workflow.add_edge("methodology_feedback_agent", "review_agent")

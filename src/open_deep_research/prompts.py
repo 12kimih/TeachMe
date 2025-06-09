@@ -1,7 +1,8 @@
 # TeachMe Agent Prompts
 
 # Stage 1: Summary Agent
-PAPER_SUMMARY_INSTRUCTIONS = """You are an expert AI researcher. Your task is to conduct a deep summarization of the provided academic manuscript text.
+PAPER_SUMMARY_INSTRUCTIONS = """
+You are an expert AI researcher. Your task is to conduct a deep summarization of the provided academic manuscript text.
 Analyze the text and extract the following information based on the specified criteria.
 The output MUST be a JSON object that follows the provided schema.
 
@@ -22,10 +23,11 @@ The output MUST be a JSON object that follows the provided schema.
 <Format>
 Call the `DeepSummary` tool with the extracted information.
 </Format>
-"""
+""".strip()
 
 # Stage 2: Search Agent
-SEARCH_KEYWORD_GENERATION_INSTRUCTIONS = """You are an expert search strategist for academic literature.
+SEARCH_KEYWORD_GENERATION_INSTRUCTIONS = """
+You are an expert search strategist for academic literature.
 Based on the deep summary of a manuscript, your goal is to generate {number_of_queries} targeted, keyword-based search queries to find related work.
 The queries should be concise and effective for searching academic databases and search engines like Google Scholar or arXiv.
 Prefix each query with one of the target conferences to narrow down the search scope.
@@ -46,9 +48,10 @@ For example: "NeurIPS graph neural networks for drug discovery" or "ICLR self-su
 <Format>
 Call the `SearchQueries` tool.
 </Format>
-"""
+""".strip()
 
-RELATED_WORK_RELEVANCE_CHECK_INSTRUCTIONS = """You are a research assistant. Your task is to determine if a candidate paper is relevant to the original manuscript.
+RELATED_WORK_RELEVANCE_CHECK_INSTRUCTIONS = """
+You are a research assistant. Your task is to determine if a candidate paper is relevant to the original manuscript.
 Compare the candidate paper's title and abstract with the original manuscript's summary.
 
 <Original Manuscript Summary>
@@ -71,9 +74,10 @@ Provide a clear 'yes' or 'no' decision and a brief justification.
 <Format>
 Call the `RelevanceDecision` tool with your assessment.
 </Format>
-"""
+""".strip()
 
-DIFFERENTIATION_ANALYSIS_INSTRUCTIONS = """You are an expert academic reviewer. Your task is to perform a comparative and differentiation analysis.
+DIFFERENTIATION_ANALYSIS_INSTRUCTIONS = """
+You are an expert academic reviewer. Your task is to perform a comparative and differentiation analysis.
 You will be given the deep summary of an original manuscript and a list of deep summaries from related works.
 Your goal is to identify commonalities, differences, and unique contributions, then provide actionable recommendations.
 
@@ -95,10 +99,11 @@ Analyze the provided information and produce a detailed differentiation analysis
 <Format>
 Provide your analysis as a well-structured markdown text.
 </Format>
-"""
+""".strip()
 
 # Stage 3: Feedback Agent
-FEEDBACK_INSTRUCTIONS_TEMPLATE = """You are an expert academic reviewer providing constructive feedback on a manuscript.
+FEEDBACK_INSTRUCTIONS_TEMPLATE = """
+You are an expert academic reviewer providing constructive feedback on a manuscript.
 Your feedback should be specific, actionable, and aimed at improving the quality of the paper.
 Focus ONLY on the specific criteria assigned to you.
 
@@ -118,7 +123,7 @@ Generate detailed, targeted improvement suggestions. For any claims lacking suff
 <Format>
 Provide your feedback as a well-structured markdown text.
 </Format>
-"""
+""".strip()
 
 FEEDBACK_CRITERIA = {
     "clarity_and_organization": """
@@ -127,28 +132,28 @@ FEEDBACK_CRITERIA = {
         - **Logical Structure:** Is the paper well-structured with a coherent flow of ideas?
         - **Engaging Abstract and Introduction:** Do the abstract and introduction provide a clear roadmap?
         - **Clarity and Precision:** Is the writing clear, concise, and free of unnecessary jargon?
-    """,
+    """.strip(),
     "motivation_and_novelty": """
     - **Motivation, Novelty & Significance:**
         - **Strong Motivation:** Is the research problem well-justified? Are gaps in existing literature identified?
         - **Novelty and Contribution:** Are the unique contributions explicitly highlighted?
         - **Significance of Results:** Is the broader impact of the findings well-articulated?
-    """,
+    """.strip(),
     "methodology_and_evidence": """
     - **Methodology & Evidence:**
         - **Well-Defined Methods:** Is the methodology described in enough detail for reproducibility?
         - **Evidence and Reasoning:** Are all claims substantiated with solid evidence, citations, or logical arguments?
-    """,
+    """.strip(),
     "technical_and_language_quality": """
     - **Technical Accuracy & Language Quality:**
         - **Verification of Formulas:** Are mathematical proofs and formulas correct? (Acknowledge if you cannot verify fully but point out potential issues).
         - **Grammar and Spelling:** Is the manuscript free of grammatical and spelling errors?
-    """,
+    """.strip(),
     "limitations_and_future_work": """
     - **Limitations & Future Work:**
         - **Acknowledged Limitations:** Are the study's limitations transparently discussed?
         - **Future Work:** Are thoughtful avenues for future research suggested?
-    """,
+    """.strip(),
 }
 
 # --- Stage 4: Review Agent Prompts (NEW) ---
@@ -453,7 +458,8 @@ CONFERENCE_FORMATS = {
     "acl": ACL_REVIEW_FORMAT,
 }
 
-REVIEW_SIMULATION_INSTRUCTIONS = """You are a simulated peer reviewer for a top-tier AI conference.
+REVIEW_SIMULATION_INSTRUCTIONS = """
+You are a simulated peer reviewer for a top-tier AI conference.
 Your task is to generate a realistic conference review for the manuscript, based on all the information gathered so far, and a specific conference review format.
 You must provide both a quantitative score (if applicable in the format) and detailed qualitative comments.
 
@@ -478,10 +484,11 @@ The tone should be professional and academic, following the guidelines.
 <Format>
 Produce the final review as a markdown document, strictly following the provided conference format.
 </Format>
-"""
+""".strip()
 
 # Final Report Generation Prompts (NEW)
-EXECUTIVE_SUMMARY_INSTRUCTIONS = """You are an expert editor creating an executive summary for a manuscript review report.
+EXECUTIVE_SUMMARY_INSTRUCTIONS = """
+You are an expert editor creating an executive summary for a manuscript review report.
 Synthesize all the provided information to generate a high-level overview.
 
 <Context>
@@ -498,9 +505,10 @@ Write a concise **Executive Summary**. It should be a high-level overview highli
 <Format>
 Provide the summary as a well-structured markdown text.
 </Format>
-"""
+""".strip()
 
-ACTIONABLE_CHECKLIST_INSTRUCTIONS = """You are a pragmatic managing editor creating an actionable enhancement checklist for authors.
+ACTIONABLE_CHECKLIST_INSTRUCTIONS = """
+You are a pragmatic managing editor creating an actionable enhancement checklist for authors.
 Based on all the feedback and analysis, create a prioritized list of concrete actions.
 
 <Context>
@@ -516,4 +524,4 @@ Create an **Actionable Enhancement Checklist**. This should be a bullet-pointed,
 <Format>
 Provide the checklist as a well-structured markdown list.
 </Format>
-"""
+""".strip()

@@ -1,6 +1,6 @@
 import os
 from dataclasses import dataclass, field, fields
-from typing import Any, Dict, List, Optional, Literal
+from typing import Any, Dict, List, Literal, Optional
 
 from langchain_core.runnables import RunnableConfig
 
@@ -8,11 +8,11 @@ from langchain_core.runnables import RunnableConfig
 def get_default_feedback_models():
     """Provides the default dictionary for feedback agent models."""
     return {
-        "clarity_and_organization": "openai:o4-mini",
-        "motivation_and_novelty": "openai:o4-mini",
-        "methodology_and_evidence": "openai:o4-mini",
-        "technical_and_language_quality": "openai:o4-mini",
-        "limitations_and_future_work": "openai:o4-mini",
+        "clarity_and_organization": "openai:gpt-4.1-mini",
+        "motivation_and_novelty": "openai:gpt-4.1-mini",
+        "methodology_and_evidence": "openai:gpt-4.1-mini",
+        "technical_and_language_quality": "openai:gpt-4.1-mini",
+        "limitations_and_future_work": "openai:gpt-4.1-mini",
     }
 
 
@@ -21,13 +21,13 @@ class Configuration:
     """The configurable fields for the TeachMe Agent."""
 
     # --- TeachMe Agent Model Configuration ---
-    summary_agent_model: str = "openai:o4-mini"
+    summary_agent_model: str = "openai:gpt-4.1-mini"
     summary_agent_model_kwargs: Optional[Dict[str, Any]] = None
 
     search_agent_model: str = "openai:gpt-4.1-mini"
     search_agent_model_kwargs: Optional[Dict[str, Any]] = None
 
-    review_agent_model: str = "openai:o4-mini"
+    review_agent_model: str = "openai:gpt-4.1-mini"
     review_agent_model_kwargs: Optional[Dict[str, Any]] = None
 
     # For executive summary and checklist generation
