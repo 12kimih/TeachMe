@@ -133,7 +133,7 @@ FEEDBACK_CRITERIA = {
         - **Engaging Abstract and Introduction:** Do the abstract and introduction provide a clear roadmap?
         - **Clarity and Precision:** Is the writing clear, concise, and free of unnecessary jargon?
     """.strip(),
-    "motivation_and_novelty": """
+    "novelty_and_motivation": """
     - **Motivation, Novelty & Significance:**
         - **Strong Motivation:** Is the research problem well-justified? Are gaps in existing literature identified?
         - **Novelty and Contribution:** Are the unique contributions explicitly highlighted?

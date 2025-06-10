@@ -157,7 +157,7 @@ async def summary_agent_node(state: PaperReviewState, config: RunnableConfig):
     summary = await summarizer_chain.ainvoke(PAPER_SUMMARY_INSTRUCTIONS.format(paper_text=text))
 
     # Populate the state for subsequent nodes
-    return {"input_path_or_text": input_val, "review_conference_format": cfg.review_conference_format, "original_paper_text": text, "original_paper_summary": summary}  # Also populate this from config
+    return {"input_path_or_text": input_val, "review_conference_format": cfg.review_conference_format, "original_paper_text": text, "original_paper_summary": summary, "differentiation_analysis": None}  # Also populate this from config
 
 
 # Stage 3 Nodes (Parallel Execution)
@@ -318,6 +318,7 @@ async def review_agent_node(state: PaperReviewState, config: RunnableConfig):
     # Dynamically select the review format based on configuration
     selected_format = CONFERENCE_FORMATS.get(cfg.review_conference_format, CONFERENCE_FORMATS["neurips"])
 
+    # differentiation_analysis
     prompt = REVIEW_SIMULATION_INSTRUCTIONS.format(how_to_write_good_reviews=HOW_TO_WRITE_GOOD_REVIEWS, review_examples=REVIEW_EXAMPLES, original_summary=state["original_paper_summary"].dict(), differentiation_analysis=state["differentiation_analysis"], aggregated_feedback=aggregated_feedback, review_format=selected_format)
     review = await llm.ainvoke(prompt)
     return {"simulated_review": review.content}
@@ -436,7 +437,7 @@ def compile_final_report_node(state: PaperReviewState):
 
 ## 2. Related Work & Differentiation Analysis
 
-{related_work_section.strip()}
+{related_work_section}
 
 ---
 
@@ -473,7 +474,7 @@ workflow.add_node("search_agent", search_agent_entry_node)
 # Stage 3 (Parallel Nodes using functools.partial)
 # Create 5 logical nodes from one function by pre-filling the 'feedback_type' argument.
 clarity_node = functools.partial(feedback_agent_node, feedback_type="clarity_and_organization")
-novelty_node = functools.partial(feedback_agent_node, feedback_type="motivation_and_novelty")
+novelty_node = functools.partial(feedback_agent_node, feedback_type="novelty_and_motivation")
 methodology_node = functools.partial(feedback_agent_node, feedback_type="methodology_and_evidence")
 technical_node = functools.partial(feedback_agent_node, feedback_type="technical_and_language_quality")
 limitations_node = functools.partial(feedback_agent_node, feedback_type="limitations_and_future_work")
