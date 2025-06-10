@@ -1,15 +1,21 @@
+from langchain.globals import set_debug
+from dotenv import load_dotenv
+
+load_dotenv()
+set_debug(True)
+
 import functools
 import operator
 import os
 from typing import Annotated, List, Literal, Optional, TypedDict
 
 from langchain.chat_models import init_chat_model
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_pymupdf4llm import PyMuPDF4LLMLoader
 from langgraph.graph import END, MessagesState, StateGraph
 from pydantic import BaseModel, Field
-
+from llama_cloud_services import LlamaParse
 from open_deep_research.configuration import Configuration
 from open_deep_research.prompts import (
     ACTIONABLE_CHECKLIST_INSTRUCTIONS,
@@ -118,7 +124,7 @@ async def summary_agent_node(state: PaperReviewState, config: RunnableConfig):
 
     # Extract the user's input from the last message in the state
     # This makes the graph invokable with a simple chat history
-    if not state["messages"] or state["messages"][-1].type != "user":
+    if not state["messages"] or not isinstance(state["messages"][-1], HumanMessage):
         raise ValueError("The conversation history must end with a user message containing the input.")
 
     input_val = state["messages"][-1].content
@@ -127,15 +133,25 @@ async def summary_agent_node(state: PaperReviewState, config: RunnableConfig):
     # 1. Parse Document
     if os.path.exists(input_val) and input_val.lower().endswith(".pdf"):
         loader = PyMuPDF4LLMLoader(input_val)
-        docs = loader.load()
+        docs = []
+        async for doc in loader.alazy_load():
+            docs.append(doc)
         text = "\n\n".join([doc.page_content for doc in docs])
+        # parser = LlamaParse(
+        #     api_key=os.environ["LLAMA_CLOUD_API_KEY"],  # can also be set in your env as LLAMA_CLOUD_API_KEY
+        #     num_workers=4,  # if multiple files passed, split in `num_workers` API calls
+        # )
+        # result = await parser.aparse(input_val)
+        # text = result.get_markdown_documents(split_by_page=True)
+        # async with aiofiles.open("example.txt", "w", encoding="utf-8") as f:
+        #     await f.write(text)
     else:
         text = input_val  # Assume raw text
 
     # 2. Summarize using LLM
     llm = init_chat_model(
         model=cfg.summary_agent_model,
-        model_kwargs=cfg.summary_agent_model_kwargs,
+        model_kwargs=cfg.summary_agent_model_kwargs or {},
     )
     summarizer_chain = llm.with_structured_output(DeepSummary)
     summary = await summarizer_chain.ainvoke(PAPER_SUMMARY_INSTRUCTIONS.format(paper_text=text))
@@ -158,7 +174,7 @@ async def feedback_agent_node(state: TypedDict, config: RunnableConfig, feedback
 
     llm = init_chat_model(
         model=model_name,
-        model_kwargs=cfg.feedback_agent_model_kwargs,
+        model_kwargs=cfg.feedback_agent_model_kwargs or {},
     )
 
     prompt = FEEDBACK_INSTRUCTIONS_TEMPLATE.format(feedback_criteria=FEEDBACK_CRITERIA[feedback_type], paper_text=state["original_paper_text"])
@@ -173,7 +189,7 @@ async def feedback_agent_node(state: TypedDict, config: RunnableConfig, feedback
 async def generate_keywords_node(state: SearchAgentState, config: RunnableConfig):
     print("--- SEARCH SUBGRAPH: GENERATING KEYWORDS ---")
     cfg = Configuration.from_runnable_config(config)
-    llm = init_chat_model(model=cfg.search_agent_model, model_kwargs=cfg.search_agent_model_kwargs)
+    llm = init_chat_model(model=cfg.search_agent_model, model_kwargs=cfg.search_agent_model_kwargs or {})
     # ... rest of the function is the same ...
     query_gen_chain = llm.with_structured_output(SearchQueries)
     queries = await query_gen_chain.ainvoke(SEARCH_KEYWORD_GENERATION_INSTRUCTIONS.format(number_of_queries=cfg.max_search_queries_per_topic, deep_summary=state["original_summary"].dict(), target_conferences=", ".join(state["target_conferences"])))
@@ -202,7 +218,7 @@ async def web_search_node(state: SearchAgentState, config: RunnableConfig):
 async def relevance_check_node(state: SearchAgentState, config: RunnableConfig):
     print("--- SEARCH SUBGRAPH: CHECKING RELEVANCE ---")
     cfg = Configuration.from_runnable_config(config)
-    llm = init_chat_model(model=cfg.search_agent_model, model_kwargs=cfg.search_agent_model_kwargs)
+    llm = init_chat_model(model=cfg.search_agent_model, model_kwargs=cfg.search_agent_model_kwargs or {})
     # ... rest of the function is the same ...
     relevance_checker = llm.with_structured_output(RelevanceDecision)
     confirmed_works = []
@@ -240,7 +256,7 @@ async def differentiation_node(state: SearchAgentState, config: RunnableConfig):
     if not state["confirmed_works"]:
         return {"differentiation_analysis": "No relevant related works were found to perform a differentiation analysis."}
     cfg = Configuration.from_runnable_config(config)
-    llm = init_chat_model(model=cfg.search_agent_model, model_kwargs=cfg.search_agent_model_kwargs)
+    llm = init_chat_model(model=cfg.search_agent_model, model_kwargs=cfg.search_agent_model_kwargs or {})
     # ... rest of the function is the same ...
     related_summaries_str = "\n\n---\n\n".join([f"Title: {w.title}\nAbstract: {w.abstract}" for w in state["confirmed_works"]])
     analysis = await llm.ainvoke(
@@ -253,7 +269,7 @@ async def differentiation_node(state: SearchAgentState, config: RunnableConfig):
 
 
 # Build Search Subgraph and Entry Node (same as before)
-search_builder = StateGraph(SearchAgentState)
+search_builder = StateGraph(SearchAgentState, config_schema=Configuration)
 # ... add nodes and edges ...
 search_builder.add_node("generate_keywords", generate_keywords_node)
 search_builder.add_node("web_search", web_search_node)
@@ -285,7 +301,7 @@ async def review_agent_node(state: PaperReviewState, config: RunnableConfig):
     cfg = Configuration.from_runnable_config(config)
     llm = init_chat_model(
         model=cfg.review_agent_model,
-        model_kwargs=cfg.review_agent_model_kwargs,
+        model_kwargs=cfg.review_agent_model_kwargs or {},
     )
 
     # Aggregate feedback for the prompt
@@ -311,7 +327,7 @@ async def executive_summary_node(state: PaperReviewState, config: RunnableConfig
     """Generates the executive summary."""
     print("--- STAGE 4.2: GENERATING EXECUTIVE SUMMARY ---")
     cfg = Configuration.from_runnable_config(config)
-    llm = init_chat_model(model=cfg.report_enhancement_agent_model, model_kwargs=cfg.report_enhancement_agent_model_kwargs)
+    llm = init_chat_model(model=cfg.report_enhancement_agent_model, model_kwargs=cfg.report_enhancement_agent_model_kwargs or {})
     aggregated_feedback = "\n\n".join([f"- {k.replace('_feedback','').title()}: {v}" for k, v in state.items() if k.endswith("_feedback")])
     prompt = EXECUTIVE_SUMMARY_INSTRUCTIONS.format(original_summary=state["original_paper_summary"].dict(), differentiation_analysis=state["differentiation_analysis"], aggregated_feedback=aggregated_feedback, simulated_review=state["simulated_review"])
     summary = await llm.ainvoke(prompt)
@@ -322,7 +338,7 @@ async def actionable_checklist_node(state: PaperReviewState, config: RunnableCon
     """Generates the actionable checklist."""
     print("--- STAGE 4.3: GENERATING ACTIONABLE CHECKLIST ---")
     cfg = Configuration.from_runnable_config(config)
-    llm = init_chat_model(model=cfg.report_enhancement_agent_model, model_kwargs=cfg.report_enhancement_agent_model_kwargs)
+    llm = init_chat_model(model=cfg.report_enhancement_agent_model, model_kwargs=cfg.report_enhancement_agent_model_kwargs or {})
     aggregated_feedback = "\n\n".join([f"- {k.replace('_feedback','').title()}: {v}" for k, v in state.items() if k.endswith("_feedback")])
     prompt = ACTIONABLE_CHECKLIST_INSTRUCTIONS.format(differentiation_analysis=state["differentiation_analysis"], aggregated_feedback=aggregated_feedback, simulated_review=state["simulated_review"])
     checklist = await llm.ainvoke(prompt)
@@ -446,7 +462,7 @@ def compile_final_report_node(state: PaperReviewState):
 
 
 # --- Orchestrator Graph (NEW WORKFLOW) ---
-workflow = StateGraph(PaperReviewState, input=MessagesState, output=MessagesState)
+workflow = StateGraph(PaperReviewState, input=MessagesState, output=MessagesState, config_schema=Configuration)
 
 # Stage 1
 workflow.add_node("summary_agent", summary_agent_node)

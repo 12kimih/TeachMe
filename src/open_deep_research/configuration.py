@@ -53,8 +53,4 @@ class Configuration:
         """Create a Configuration instance from a RunnableConfig."""
         configurable = config["configurable"] if config and "configurable" in config else {}
         values: dict[str, Any] = {f.name: os.environ.get(f.name.upper(), configurable.get(f.name)) for f in fields(cls) if f.init}
-        init_values = {k: v for k, v in values.items() if v is not None}
-        for f in fields(cls):
-            if f.name not in init_values and f.default_factory is not None:
-                init_values[f.name] = f.default_factory()
-        return cls(**init_values)
+        return cls(**{k: v for k, v in values.items() if v})
