@@ -78,6 +78,17 @@ def get_search_params(search_api: str, search_api_config: Optional[Dict[str, Any
         "pubmed": ["top_k_results", "email", "api_key", "doc_content_chars_max"],
         "linkup": ["depth"],
         "googlesearch": ["max_results"],
+        "semanticscholar": [
+            "max_results",
+            "offset",
+            "year",
+            "publication_date_or_year",
+            "open_access_pdf",
+            "publication_types",
+            "venue",
+            "fields_of_study",
+            "min_citation_count",
+        ],
     }
 
     # Get the list of accepted parameters for the given search API
@@ -1536,6 +1547,8 @@ async def select_and_execute_search(search_api: str, query_list: list[str], para
         search_results = await google_search_async(query_list, **params_to_pass)
     elif search_api == "azureaisearch":
         search_results = await azureaisearch_search_async(query_list, **params_to_pass)
+    elif search_api == "semanticscholar":
+        search_results = await semantic_scholar_search_async(query_list, **params_to_pass)
     else:
         raise ValueError(f"Unsupported search API: {search_api}")
 
@@ -1557,3 +1570,101 @@ async def load_mcp_server_config(path: str) -> dict:
 
     config = await asyncio.to_thread(_load)
     return config
+
+
+@traceable
+async def semantic_scholar_search(
+    search_queries: List[str],
+    max_results_per_query: int = 100,
+    offset: int = 0,
+    year: Optional[str] = None,
+    publication_date_or_year: Optional[str] = None,
+    open_access_pdf: bool = False,
+    publication_types: Optional[List[str]] = None,
+    venue: Optional[List[str]] = None,
+    fields_of_study: Optional[List[str]] = None,
+    min_citation_count: Optional[int] = None,
+) -> List[dict]:
+    """
+    Performs sequential searches on Semantic Scholar using its API for authenticated users.
+    Requires SEMANTIC_SCHOLAR_API_KEY environment variable.
+
+    This function takes a list of search queries and sequentially fetches results
+    from the Semantic Scholar Graph API. It handles API rate limits by sending
+    one request at a time and formats the output to be compatible with downstream
+    processing.
+
+    Args:
+        search_queries (List[str]): A list of string queries to be executed.
+        max_results_per_query (int): Maximum number of results per query (API limit is 100).
+        offset (int): Starting position for results, for pagination.
+        year (Optional[str]): Year or year range for publication (e.g., "2023", "2020-2023").
+        publication_date_or_year (Optional[str]): Date or date range (e.g., "2023-03-15", "2020-01-01:2021-01-01").
+        open_access_pdf (bool): If True, only return papers with an open access PDF.
+        publication_types (Optional[List[str]]): Filter by types (e.g., 'JournalArticle', 'Review').
+        venue (Optional[List[str]]): Filter by a list of venue names.
+        fields_of_study (Optional[List[str]]): Filter by fields (e.g., 'Computer Science').
+        min_citation_count (Optional[int]): Filter by minimum number of citations.
+
+    Returns:
+        List[dict]: A list containing the search results for all queries. Each item
+                    in the list corresponds to the results of a single query and
+                    contains a 'results' key with a list of found papers.
+    """
+    API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
+    if not API_KEY:
+        raise ValueError("SEMANTIC_SCHOLAR_API_KEY environment variable is required for this function.")
+
+    BASE_URL = "https://api.semanticscholar.org/graph/v1/paper/search"
+    headers = {"x-api-key": API_KEY}
+
+    REQUESTED_FIELDS = ["paperId", "url", "title", "abstract", "venue", "publicationVenue", "year", "referenceCount", "citationCount", "influentialCitationCount", "isOpenAccess", "openAccessPdf"]
+
+    async def process_single_query(query: str, session: aiohttp.ClientSession) -> dict:
+        params = {
+            "query": query,
+            "limit": min(max_results_per_query, 100),
+            "offset": offset,
+            "fields": ",".join(REQUESTED_FIELDS),
+        }
+        # Dynamically add optional parameters
+        if year:
+            params["year"] = year
+        if publication_date_or_year:
+            params["publicationDateOrYear"] = publication_date_or_year
+        if open_access_pdf:
+            params["openAccessPdf"] = ""
+        if publication_types:
+            params["publicationTypes"] = ",".join(publication_types)
+        if venue:
+            params["venue"] = ",".join(venue)
+        if fields_of_study:
+            params["fieldsOfStudy"] = ",".join(fields_of_study)
+        if min_citation_count is not None:
+            params["minCitationCount"] = str(min_citation_count)
+
+        try:
+            # CHANGED: Timeout adjusted to 90 seconds (1.5 minutes) for a more realistic wait time.
+            async with session.get(BASE_URL, params=params, headers=headers, timeout=300) as response:
+                if response.status == 429:
+                    error_text = await response.text()
+                    print(f"Rate limit hit for Semantic Scholar: {error_text}. Waiting before next query.")
+                    raise Exception(f"Rate limit exceeded: {error_text}")
+                response.raise_for_status()
+                data = await response.json()
+                return {"query": query, "results": data.get("data", [])}
+        except Exception as e:
+            print(f"Error processing Semantic Scholar query '{query}': {str(e)}")
+            return {"query": query, "results": [], "error": str(e)}
+
+    # CHANGED: Replaced concurrent execution with a sequential loop.
+    # This ensures only one query is sent to the API at a time.
+    all_results = []
+    async with aiohttp.ClientSession() as session:
+        for query in search_queries:
+            result = await process_single_query(query, session)
+            all_results.append(result)
+            # A short delay between sequential requests to respect API rate limits.
+            await asyncio.sleep(1.1)
+
+    return all_results

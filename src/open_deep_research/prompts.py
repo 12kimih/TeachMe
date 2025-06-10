@@ -25,79 +25,51 @@ Call the `DeepSummary` tool with the extracted information.
 </Format>
 """.strip()
 
-# Stage 2: Search Agent
+# --- Stage 2: Search Agent Prompts (NEW) ---
+
 SEARCH_KEYWORD_GENERATION_INSTRUCTIONS = """
-You are an expert search strategist for academic literature.
-Based on the deep summary of a manuscript, your goal is to generate {number_of_queries} targeted, keyword-based search queries to find related work.
-The queries should be concise and effective for searching academic databases and search engines like Google Scholar or arXiv.
-Prefix each query with one of the target conferences to narrow down the search scope.
+You are an expert academic researcher tasked with finding foundational and related work for a new manuscript.
+Based on the deep summary of the user's manuscript, generate a list of concise, high-level search keywords for use in scholarly search engines.
+
+**Guiding Principles:**
+1.  **Use Established Terminology:** Focus on the underlying concepts, problem domains, and established techniques. **Prioritize using widely accepted terms from the relevant academic field to maximize the number of relevant search results.**
+2.  **Avoid Novelty:** **Do NOT use brand-new, specific names of models or methods introduced in the manuscript.** The goal is to find *prior art*, so the search terms must already exist in the published literature.
+3.  **Be Concise:** Queries should be short and effective, **typically 1 to 2 words long**. Avoid long, overly specific phrases that will yield zero results.
+4.  **Be Diverse:** Generate queries that cover different facets of the paper, such as the core problem, the technical method, and the evaluation context or dataset type.
 
 <Manuscript Deep Summary>
-{deep_summary}
+{original_summary}
 </Manuscript Deep Summary>
 
-<Target Conferences>
-{target_conferences}
-</Target Conferences>
-
 <Task>
-Generate {number_of_queries} search queries.
-For example: "NeurIPS graph neural networks for drug discovery" or "ICLR self-supervised learning for computer vision".
+Generate a list of {max_search_queries} distinct search query strings following all the principles above.
 </Task>
 
 <Format>
-Call the `SearchQueries` tool.
+Call the `SearchQueries` tool with the generated list of query strings.
 </Format>
 """.strip()
 
-RELATED_WORK_RELEVANCE_CHECK_INSTRUCTIONS = """
-You are a research assistant. Your task is to determine if a candidate paper is relevant to the original manuscript.
-Compare the candidate paper's title and abstract with the original manuscript's summary.
+RELATED_WORK_SIMILARITY_EXPLANATION_INSTRUCTIONS = """
+You are an AI research assistant. Your task is to explain the relevance of a retrieved academic paper to the user's manuscript.
+Based on the deep summary of the user's manuscript and the abstract of the retrieved paper, provide a concise rationale explaining *how* and *why* the retrieved paper is closely related.
 
-<Original Manuscript Summary>
+<User's Manuscript Deep Summary>
 {original_summary}
-</Original Manuscript Summary>
+</User's Manuscript Deep Summary>
 
-<Candidate Paper Title>
-{candidate_title}
-</Candidate Paper Title>
-
-<Candidate Paper Abstract>
-{candidate_abstract}
-</Candidate Paper Abstract>
+<Retrieved Related Work>
+- **Title:** {related_work_title}
+- **Abstract:** {related_work_abstract}
+</Retrieved Related Work>
 
 <Task>
-Assess the relevance. The candidate paper is relevant if it addresses a similar problem, uses a related methodology, or builds upon similar concepts.
-Provide a clear 'yes' or 'no' decision and a brief justification.
+Generate a "Similarity Explanation". This explanation should be a concise paragraph that highlights shared themes, methodologies, problems addressed, or potential for comparative analysis.
+Do not simply repeat the abstract. Synthesize and connect the ideas.
 </Task>
 
 <Format>
-Call the `RelevanceDecision` tool with your assessment.
-</Format>
-""".strip()
-
-DIFFERENTIATION_ANALYSIS_INSTRUCTIONS = """
-You are an expert academic reviewer. Your task is to perform a comparative and differentiation analysis.
-You will be given the deep summary of an original manuscript and a list of deep summaries from related works.
-Your goal is to identify commonalities, differences, and unique contributions, then provide actionable recommendations.
-
-<Original Manuscript Summary>
-{original_summary}
-</Original Manuscript Summary>
-
-<Related Works Summaries>
-{related_summaries}
-</Related Works Summaries>
-
-<Task>
-Analyze the provided information and produce a detailed differentiation analysis covering the following points:
-1.  **Core Commonalities and Differences:** What are the key similarities and differences in methodology, goals, and findings between the original manuscript and the related works?
-2.  **Distinct or Innovative Aspects:** In what specific ways is the original manuscript distinct or innovative? Highlight its unique contributions.
-3.  **Actionable Recommendations:** Suggest concrete, actionable experiments, analyses, or framing adjustments that could further enhance the manuscript's uniqueness and clearly differentiate it from the related work.
-</Task>
-
-<Format>
-Provide your analysis as a well-structured markdown text.
+Provide the explanation as a single, well-written paragraph of text.
 </Format>
 """.strip()
 
@@ -467,7 +439,7 @@ You must provide both a quantitative score (if applicable in the format) and det
 - **How to Write a Good Review:** {how_to_write_good_reviews}
 - **Examples of Good Reviews:** {review_examples}
 - **Manuscript Deep Summary:** {original_summary}
-- **Differentiation Analysis:** {differentiation_analysis}
+- **Semantic Related Works:** {final_related_works}
 - **Aggregated Feedback:** {aggregated_feedback}
 </Background Information for Review>
 
@@ -486,24 +458,24 @@ Produce the final review as a markdown document, strictly following the provided
 </Format>
 """.strip()
 
-# Final Report Generation Prompts (NEW)
+# Final Report Generation Prompts
 EXECUTIVE_SUMMARY_INSTRUCTIONS = """
 You are an expert editor creating an executive summary for a manuscript review report.
 Synthesize all the provided information to generate a high-level overview.
 
 <Context>
 - **Original Manuscript Summary:** {original_summary}
-- **Differentiation Analysis:** {differentiation_analysis}
+- **Semantic Related Works Found:** {final_related_works}
 - **Aggregated Feedback:** {aggregated_feedback}
 - **Simulated Peer Review:** {simulated_review}
 </Context>
 
 <Task>
-Write a concise **Executive Summary**. It should be a high-level overview highlighting the manuscript's main purpose, key findings, and novelty. Briefly mention its core strengths and the major areas for improvement identified in the review. The summary is intended to provide editors, authors, or reviewers with a quick yet comprehensive snapshot of the manuscript's status.
+Write a concise **Executive Summary**. It should be a high-level overview highlighting the manuscript's main purpose, key findings, and novelty. Briefly mention its core strengths, its positioning relative to the identified related work, and the major areas for improvement identified in the review. The summary is intended to provide editors, authors, or reviewers with a quick yet comprehensive snapshot of the manuscript's status.
 </Task>
 
 <Format>
-Provide the summary as a well-structured markdown text.
+Provide the summary as a well-structured markdown text. **Do not wrap the output in markdown code fences (e.g., ```markdown ... ```).**
 </Format>
 """.strip()
 
@@ -512,16 +484,16 @@ You are a pragmatic managing editor creating an actionable enhancement checklist
 Based on all the feedback and analysis, create a prioritized list of concrete actions.
 
 <Context>
-- **Differentiation Analysis:** {differentiation_analysis}
+- **Semantic Related Works Found:** {final_related_works}
 - **Aggregated Feedback:** {aggregated_feedback}
 - **Simulated Peer Review:** {simulated_review}
 </Context>
 
 <Task>
-Create an **Actionable Enhancement Checklist**. This should be a bullet-pointed, prioritized list of concrete actions the authors should take to improve their manuscript. Group the suggestions by type (e.g., Experimental, Structural, Language/Clarity, Differentiation) or by manuscript section (e.g., Abstract, Methods, Discussion) for clarity.
+Create an **Actionable Enhancement Checklist**. This should be a bullet-pointed, prioritized list of concrete actions the authors should take to improve their manuscript. Incorporate suggestions related to differentiating the work from the identified related papers. Group the suggestions by type (e.g., Experimental, Structural, Positioning vs. Related Work, Language/Clarity) for clarity.
 </Task>
 
 <Format>
-Provide the checklist as a well-structured markdown list.
+Provide the checklist as a well-structured markdown list. **Do not wrap the output in markdown code fences (e.g., ```markdown ... ```).**
 </Format>
 """.strip()
